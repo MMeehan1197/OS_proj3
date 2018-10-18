@@ -218,14 +218,14 @@ int sh( int argc, char **argv, char **envp)
 		}		
 	}
 	else if(strcmp(command, "watchuser") == 0)
-	{
+	{ 
 		if(argsct < 2)
 		{
 			fprintf(stderr, "watchuser: Too few arguments.\n");
 		}
 		else if (argsct == 2)
 		{
-
+			//Prints out all current users on the watch list
 			if (strcmp(args[1], "list") == 0 || strcmp(args[1], "l") == 0)
 			{
 				if(users != NULL)
@@ -245,9 +245,9 @@ int sh( int argc, char **argv, char **envp)
 					fflush(stdout);
 				}
 			}
+			//Add a user to the watch list
 			else
 			{
-				//Watch user
 				struct user* currUser;
 				if(users != NULL)
 				{
@@ -256,7 +256,8 @@ int sh( int argc, char **argv, char **envp)
 					{
 						currUser = currUser->next; 
 					}
-
+					
+					//Creates a element at the end of the list 
 					currUser->next = malloc(sizeof (struct user));
 					currUser = currUser->next;
 				}
@@ -269,6 +270,7 @@ int sh( int argc, char **argv, char **envp)
 				currUser->name = malloc(strlen(args[1]) * sizeof (char));
 				currUser->next = NULL;
 				
+				//initialize pthread and lock
 				if(watchingUser == NULL)
 				{
 					watchingUser = malloc(sizeof(pthread_t));
@@ -286,9 +288,10 @@ int sh( int argc, char **argv, char **envp)
 		}
 		else
 		{
-			//Stop watching user
+			//Stop watching all instances of a user
 			if(strcmp(args[2], "stop") == 0)
 			{			
+				//Checks if the head should be removedd
 				while(users != NULL && strcmp(users->name, args[1]) == 0)
 				{
 					struct user* tmpUser = users->next;
@@ -296,9 +299,10 @@ int sh( int argc, char **argv, char **envp)
 					free(users);
 					users = tmpUser;
 				}
-					
+				
 				if(users != NULL)
 				{
+					//Checks if the rest of the LL needs to be removed
 					struct user* currUser = users;	
 
 					while(currUser->next != NULL)
@@ -460,25 +464,30 @@ void* watchuser(void* n)
 	while(1)
 	{
 		sleep(SLEEPTIMER);
+		//Locks beause main thread can write, not from concurrent read
 		pthread_mutex_lock(&mutex_Users);
 		struct user* currUser = users;
+		//File to to show when a user was logged in
 		output = fopen("watchuser_log.txt", "a");
 
 		while (up = getutxent())	/* get an entry */
 		{
 			if ( up->ut_type == USER_PROCESS )	/* only care about users */
 			{
+				time_t rawtime;
+				time ( &rawtime );
+				
 				while(currUser->next != NULL)
 				{
 					if(strcmp(currUser->name, up->ut_user) == 0)
 					{
-						fprintf(output,"%s: Logged in...\n", currUser->name);
+						fprintf(output,"%s: Logged in at %s.\n", currUser->name, asctime (localtime ( &rawtime )));
 					}
 					currUser = currUser->next; 
 				}
 				if(strcmp(currUser->name, up->ut_user) == 0)
 				{
-					fprintf(output,"%s: Logged in...\n", currUser->name);
+					fprintf(output,"%s: Logged in at %s.\n", currUser->name, asctime (localtime ( &rawtime )));
 				}
 			}
 		}
