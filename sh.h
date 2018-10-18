@@ -29,6 +29,11 @@ struct alias {
 	int used;
 };
 
+struct user
+{
+	char* name;
+	struct user *next;
+};
 //the process id of the child process
 pid_t cpid;
 
@@ -121,5 +126,11 @@ char ** set_envir (int argsct, char** args, struct pathelement* pathlist, char**
  */
 int matches (char * s1, char * s2);
 
+void* watchuser (void* n);
+
+void freeUsers();
+
+
 #define PROMPTMAX 32
 #define MAXARGS 1000
+#define SLEEPTIMER 20 

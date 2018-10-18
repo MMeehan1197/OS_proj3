@@ -17,8 +17,14 @@
 #include "sh.h"
 #include <glob.h>
 #include <sys/time.h>
+#include <pthread.h>
+#include <utmpx.h>
+#include <time.h>
 
 pid_t cpid;
+pthread_mutex_t mutex_Users;
+struct user* users = NULL;
+struct utmpx *up;
 
 /* function that starts the shell
  * argc: argument count
@@ -36,7 +42,8 @@ int sh( int argc, char **argv, char **envp)
   int uid, i, status, argsct, go = 1;
   struct passwd *password_entry;
   char *homedir;
-  
+  pthread_t* watchingUser = NULL;
+
   struct pathelement *pathlist;
   int count;
   char *token;
@@ -54,6 +61,12 @@ int sh( int argc, char **argv, char **envp)
   // store the current working directory  
   if ( (pwd = getcwd(NULL, PATH_MAX+1)) == NULL )
   {
+	if(watchingUser != NULL)
+	{
+		free(watchingUser);
+		pthread_mutex_destroy(&mutex_Users);
+	}
+	freeUsers();
     perror("getcwd");
     exit(2);
   }
@@ -170,6 +183,7 @@ int sh( int argc, char **argv, char **envp)
 	if(strcmp(command, "exit") == 0){
 		// Exit the shell
 		printf("Executing built-in exit\n");
+		free(watchingUser);
 		exit(0);
 	}
 	else if(strcmp(command, "which") == 0){
@@ -202,6 +216,109 @@ int sh( int argc, char **argv, char **envp)
 				}
 			}
 		}		
+	}
+	else if(strcmp(command, "watchuser") == 0)
+	{
+		if(argsct < 2)
+		{
+			fprintf(stderr, "watchuser: Too few arguments.\n");
+		}
+		else if (argsct == 2)
+		{
+
+			if (strcmp(args[1], "list") == 0 || strcmp(args[1], "l") == 0)
+			{
+				if(users != NULL)
+				{	
+					struct user* currUser = users;
+					while(currUser->next != NULL)
+					{
+						printf("%s, ", currUser->name);
+						currUser = currUser->next;
+					}
+					printf("%s\n", currUser->name);
+					fflush(stdout);
+				}
+				else
+				{
+					printf("No users are being watched.\n");
+					fflush(stdout);
+				}
+			}
+			else
+			{
+				//Watch user
+				struct user* currUser;
+				if(users != NULL)
+				{
+					currUser = users;
+					while(currUser->next != NULL)
+					{
+						currUser = currUser->next; 
+					}
+
+					currUser->next = malloc(sizeof (struct user));
+					currUser = currUser->next;
+				}
+				else
+				{
+					users = malloc(sizeof (struct user));
+					currUser = users;
+				}
+
+				currUser->name = malloc(strlen(args[1]) * sizeof (char));
+				currUser->next = NULL;
+				
+				if(watchingUser == NULL)
+				{
+					watchingUser = malloc(sizeof(pthread_t));
+					int error = pthread_create(watchingUser, NULL, watchuser, 0);
+					if(error > 0)
+					{
+						printf("Error creating thread!");
+					}
+				}
+
+				pthread_mutex_lock(&mutex_Users);
+				strcpy(currUser->name, args[1]);
+				pthread_mutex_unlock(&mutex_Users);
+			}			
+		}
+		else
+		{
+			//Stop watching user
+			if(strcmp(args[2], "stop") == 0)
+			{			
+				while(users != NULL && strcmp(users->name, args[1]) == 0)
+				{
+					struct user* tmpUser = users->next;
+					free(users->name);
+					free(users);
+					users = tmpUser;
+				}
+					
+				if(users != NULL)
+				{
+					struct user* currUser = users;	
+
+					while(currUser->next != NULL)
+					{
+						if(strcmp(currUser->next->name, args[1]) == 0)
+						{
+							struct user* tmpUser = currUser->next->next;
+							free(currUser->next->name);
+							free(currUser->next);
+							currUser->next = tmpUser;
+						}
+						else
+						{
+							currUser = currUser->next;
+						} 
+					}
+				}
+			}
+		}
+
 	}
 	else{
 
@@ -337,3 +454,51 @@ char *which(char *command, struct pathelement *pathlist, struct alias *alist )
 
 } /* which() */
 
+void* watchuser(void* n)
+{
+	FILE *output;
+	while(1)
+	{
+		sleep(SLEEPTIMER);
+		pthread_mutex_lock(&mutex_Users);
+		struct user* currUser = users;
+		output = fopen("watchuser_log.txt", "a");
+
+		while (up = getutxent())	/* get an entry */
+		{
+			if ( up->ut_type == USER_PROCESS )	/* only care about users */
+			{
+				while(currUser->next != NULL)
+				{
+					if(strcmp(currUser->name, up->ut_user) == 0)
+					{
+						fprintf(output,"%s: Logged in...\n", currUser->name);
+					}
+					currUser = currUser->next; 
+				}
+				if(strcmp(currUser->name, up->ut_user) == 0)
+				{
+					fprintf(output,"%s: Logged in...\n", currUser->name);
+				}
+			}
+		}
+		fclose(output);
+		pthread_mutex_unlock(&mutex_Users);
+	}
+}
+
+void freeUsers()
+{
+	struct user* currUser = users;	
+
+	while(currUser->next != NULL)
+	{
+		struct user* tmpUser = currUser->next->next;
+		free(currUser->next->name);
+		free(currUser->next);
+		currUser->next = tmpUser;
+	}
+	
+	free(currUser->name);
+	free(currUser);
+}
