@@ -40,6 +40,9 @@ struct user
 	struct user *next;
 };
 
+/* Used to find a file (path) and keep track of its length (size)
+ * Creates a thread that checks if data was added to the file
+ */
 struct mail
 {
 	char* path;
@@ -146,10 +149,16 @@ int matches (char * s1, char * s2);
  */
 void* watchuser (void* n);
 
+/* Checks every second for if a file was changed, and reports if it was
+ */
 void* watchmail (void* n);
 
+/* Finds the size of a file (unsigned long)
+ */
 size_t getFilesize(const char* filename);
 
+/* Removes all users from stacks
+ */
 void freeUsers();
 
 #define PROMPTMAX 32

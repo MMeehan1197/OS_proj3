@@ -346,6 +346,7 @@ int sh( int argc, char **argv, char **envp)
 					{
 						fprintf(stderr, "watchmail: Nothing in list to turn off.\n");
 					}
+					//Free all values that match the off case
 					else
 					{
 						currMail = mailingList;
@@ -378,10 +379,10 @@ int sh( int argc, char **argv, char **envp)
 						}
 					}
 				}
-
 			}
 			else
 			{				
+				//Creates new list
 				if(mailingList == NULL)
 				{
 					mailingList = malloc(sizeof(struct mail));
@@ -389,6 +390,7 @@ int sh( int argc, char **argv, char **envp)
 					mailingList->prev = NULL;
 					currMail = mailingList;
 				}
+				//Adds to end of the list
 				else
 				{
 					currMail = mailingList;
@@ -405,6 +407,7 @@ int sh( int argc, char **argv, char **envp)
 				strcpy(currMail->path, args[1]);
 
 				currMail->size = getFilesize(currMail->path);
+				//Removes entry if there is an error getting file size
 				if(currMail->size == -1)
 				{
 					fprintf(stderr, "watchmail: Issues calcuating size of file.\n");
@@ -419,7 +422,8 @@ int sh( int argc, char **argv, char **envp)
 					}
 					free(currMail);
 				}
-				else
+				//Creates a new thread that checks on the file
+				else 
 				{
 					currMail->thread = malloc(sizeof(pthread_t));
 					pthread_create(currMail->thread, NULL, watchmail, currMail);
@@ -580,7 +584,7 @@ void* watchuser(void* n)
 			{
 				time_t rawtime;
 				time ( &rawtime );
-				
+				//Checks if a user has a process
 				while(currUser->next != NULL)
 				{
 					if(strcmp(currUser->name, up->ut_user) == 0)
