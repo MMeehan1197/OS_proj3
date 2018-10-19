@@ -17,7 +17,6 @@
 #include "sh.h"
 #include <glob.h>
 #include <sys/time.h>
-#include <pthread.h>
 #include <utmpx.h>
 #include <time.h>
 
@@ -49,6 +48,7 @@ int sh( int argc, char **argv, char **envp)
   char *token;
   struct prev_cmd* head = NULL;
   struct alias* alist = NULL;
+  struct mail* mailingList = NULL;
   int space;
   int valid;
   int background;
@@ -226,7 +226,7 @@ int sh( int argc, char **argv, char **envp)
 		else if (argsct == 2)
 		{
 			//Prints out all current users on the watch list
-			if (strcmp(args[1], "list") == 0 || strcmp(args[1], "l") == 0)
+			if (strcmp(args[1], "-l") == 0)
 			{
 				if(users != NULL)
 				{	
@@ -323,6 +323,110 @@ int sh( int argc, char **argv, char **envp)
 			}
 		}
 
+	}
+	else if (strcmp(command, "watchmail") == 0)
+	{
+		if(argsct < 2)
+		{
+			fprintf(stderr, "watchmail: Too few arguments.\n");
+		}
+		else
+		{
+			struct mail* currMail;
+
+			if(fopen(args[1], "r") == NULL)
+			{
+				fprintf(stderr, "watchmail: File does not exist.\n");
+			}
+			else if(argsct > 2)
+			{
+				if(strcmp(args[2], "off") == 0)
+				{
+					if(mailingList == NULL)
+					{
+						fprintf(stderr, "watchmail: Nothing in list to turn off.\n");
+					}
+					else
+					{
+						currMail = mailingList;
+						while(currMail->next != NULL)
+						{
+							if(strcmp(currMail->path, args[1]) == 0)
+							{
+								if(currMail->prev != NULL)
+								{
+									currMail->prev->next = currMail->next;
+									currMail->next->prev = currMail->prev;
+								}
+								else
+								{
+									currMail->next->prev = NULL;
+								}
+								free(currMail->thread);
+								free(currMail->path);
+							}
+						}
+						if(strcmp(currMail->path, args[1]) == 0)
+						{
+							if(currMail->prev != NULL)
+							{
+								currMail->prev->next = currMail->next;
+							}
+
+							free(currMail->thread);
+							free(currMail->path);
+						}
+					}
+				}
+
+			}
+			else
+			{				
+				if(mailingList == NULL)
+				{
+					mailingList = malloc(sizeof(struct mail));
+					mailingList->next = NULL;
+					mailingList->prev = NULL;
+					currMail = mailingList;
+				}
+				else
+				{
+					currMail = mailingList;
+					while(currMail->next != NULL)
+					{
+						currMail = currMail->next;
+					}
+					currMail->next = malloc(sizeof(struct mail));
+					currMail->next->prev = currMail;
+					currMail = currMail->next;
+				}
+
+				currMail->path = (char*)malloc(strlen(args[1]) * sizeof(char*));
+				strcpy(currMail->path, args[1]);
+
+				currMail->size = getFilesize(currMail->path);
+				if(currMail->size == -1)
+				{
+					fprintf(stderr, "watchmail: Issues calcuating size of file.\n");
+					free(currMail->path);
+					if(currMail == mailingList)
+					{
+						mailingList = NULL;
+					}
+					else
+					{
+						currMail->prev->next = NULL;
+					}
+					free(currMail);
+				}
+				else
+				{
+					currMail->thread = malloc(sizeof(pthread_t));
+					pthread_create(currMail->thread, NULL, watchmail, currMail);
+					currMail->next = NULL;
+				}
+			}
+		}
 	}
 	else{
 
@@ -482,18 +586,55 @@ void* watchuser(void* n)
 					if(strcmp(currUser->name, up->ut_user) == 0)
 					{
 						fprintf(output,"%s: Logged in at %s.\n", currUser->name, asctime (localtime ( &rawtime )));
+						printf("%s: Logged in at %s.\n", currUser->name, asctime (localtime ( &rawtime )));
 					}
 					currUser = currUser->next; 
 				}
 				if(strcmp(currUser->name, up->ut_user) == 0)
 				{
 					fprintf(output,"%s: Logged in at %s.\n", currUser->name, asctime (localtime ( &rawtime )));
+					printf("%s: Logged in at %s.\n", currUser->name, asctime (localtime ( &rawtime )));
 				}
+				fflush(output);
 			}
 		}
 		fclose(output);
 		pthread_mutex_unlock(&mutex_Users);
 	}
+}
+
+void* watchmail(void* n)
+{
+	struct mail* currMail = (struct mail*)n;
+	size_t size;
+	struct timeval tv;
+	while(1)
+	{
+		sleep(1);
+		size = getFilesize(currMail->path);
+		if(currMail->size < size)
+		{
+			currMail->size = size;
+			if(gettimeofday(tv.tv_sec, NULL) == 0)
+			{			
+				printf("\aYou've Got Mail!!! \nFILE: %s \nTIME: %s! \n", currMail->path, ctime(tv.tv_sec));
+			}
+			else
+			{
+				printf("\aYou've Got Mail!!!");
+			}
+			fflush(stdout);
+		}
+	}
+}
+
+size_t getFilesize(const char* filename)
+ {
+    struct stat st;
+    if(stat(filename, &st) != 0) {
+        return 0;
+    }
+    return st.st_size;   
 }
 
 void freeUsers()

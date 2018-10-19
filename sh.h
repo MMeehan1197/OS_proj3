@@ -6,6 +6,8 @@
  */
 
 #include "get_path.h"
+#include <pthread.h>
+#include <sys/stat.h>
 
 /* This is the data structure that holds the previously issued command
  * Has fields for the currently issued command, the previous command,
@@ -29,11 +31,24 @@ struct alias {
 	int used;
 };
 
+/* The name of a user who might run a process (name).
+ * And a pointer to the next name in the list (next).
+ */
 struct user
 {
 	char* name;
 	struct user *next;
 };
+
+struct mail
+{
+	char* path;
+	pthread_t* thread;
+	size_t size;
+	struct mail *next;
+	struct mail *prev;
+};
+
 //the process id of the child process
 pid_t cpid;
 
@@ -126,10 +141,16 @@ char ** set_envir (int argsct, char** args, struct pathelement* pathlist, char**
  */
 int matches (char * s1, char * s2);
 
+/* Checks if any user processes are being run
+ * If any of those have the same user as the local list, it prints to a file
+ */
 void* watchuser (void* n);
 
-void freeUsers();
+void* watchmail (void* n);
 
+size_t getFilesize(const char* filename);
+
+void freeUsers();
 
 #define PROMPTMAX 32
 #define MAXARGS 1000
